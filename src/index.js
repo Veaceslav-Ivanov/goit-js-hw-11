@@ -1,61 +1,90 @@
-import './css/styles.css';
-import API from './fetchCountries.js';
-import { debounce, max } from 'lodash';
+// import './css/styles.css';
+import axios from 'axios';
 import { Notify } from 'notiflix';
 
-const DEBOUNCE_DELAY = 300;
-const MAX_RESPONSE = 10;
+const BASE_URL = 'https://pixabay.com/api/?key=24425746-eb0b4891a5391949c89a37373';
 
-const searchBox = document.querySelector('#search-box');
-const countryList = document.querySelector('.country-list');
-const countryInfo = document.querySelector('.country-info');
+const searchForm = document.querySelector('.search-form');
+const gallery = document.querySelector('.gallery');
+const loadMoreButton = document.querySelector('.load-more');
+let page;
+let inputValue;
 
-searchBox.addEventListener('input', debounce(onSearch, DEBOUNCE_DELAY));
+searchForm.addEventListener('submit', onSubmit);
+loadMoreButton.addEventListener('click', onLoadMoreClick);
+loadMoreButton.style.display = 'none';
 
-function onSearch() {
-  let inputData = searchBox.value.toLowerCase().trim();
-  if (!inputData) {
-    clearMarkup();
+async function createRequest(inputValue, page) {
+  const response = await axios.get(
+    `${BASE_URL}&q=${inputValue}&image_type=photo&orientation=horizontal&safesearch=true&per_page=40&page=${page}`,
+  );
+  const images = await response.data;
+
+  return images;
+}
+
+function onSubmit(event) {
+  event.preventDefault();
+  gallery.innerHTML = '';
+  page = 1;
+  inputValue = event.currentTarget.elements.searchQuery.value;
+  if (!inputValue.trim()) {
+    Notify.failure('Please, enter some word');
     return;
   }
-  API.fetchCountries(inputData).then(response => {
-    if (response.length > MAX_RESPONSE) {
-      Notify.info('Too many matches found. Please enter a more specific name.');
-      clearMarkup();
+  createRequest(inputValue, page).then(response => {
+    console.log(response.totalHits);
+    if (!response.totalHits) {
+      loadMoreButton.style.display = 'none';
+      Notify.failure('Sorry, there are no images matching your search query. Please try again.');
       return;
     }
-    createList(response);
+
+    createMarkup(response);
+    if (gallery.children.length >= response.totalHits) {
+      loadMoreButton.style.display = 'none';
+      Notify.info("We're sorry, but you've reached the end of search results.");
+      return;
+    }
+
+    loadMoreButton.style.display = 'block';
   });
 }
 
-function createList(countries) {
-  if (countries.length === 1) {
-    const countryData = countries.map(({ name, capital, population, flags, languages }) => {
-      return `<img src="${flags.svg}" alt="" width="280px">
-    <h2 class="country-title">${name}</h2>
-    <p class="country-description">Capital: <span class="description-span">${capital}</span></p>
-    <p class="country-description">Population: <span class="description-span">${population}</span></p>
-    <p class="country-description">Languages: <span class="description-span">${languages.map(
-      ({ name }) => name,
-    )}</span></p>`;
-    });
-    countryInfo.innerHTML = countryData;
-    countryList.innerHTML = '';
-    return;
-  }
-  const listMarkup = countries
-    .map(({ name, flags }) => {
-      return `<li class="country-item">
-      <img src="${flags.svg}" alt="" width="40px">
-      <p class="country-item-text">${name}</p>
-    </li>`;
-    })
-    .join('');
-  countryList.innerHTML = listMarkup;
-  countryInfo.innerHTML = '';
+function onLoadMoreClick() {
+  page += 1;
+  createRequest(inputValue, page).then(response => {
+    createMarkup(response);
+    if (gallery.children.length >= response.totalHits) {
+      loadMoreButton.style.display = 'none';
+      Notify.info("We're sorry, but you've reached the end of search results.");
+      return;
+    }
+  });
 }
 
-function clearMarkup() {
-  countryList.innerHTML = '';
-  countryInfo.innerHTML = '';
+function createMarkup(images) {
+  const cardMarkup = images.hits
+    .map(image => {
+      return `<div class="photo-card">
+  <img src="${image.webformatURL}" alt="${image.tags}" loading="lazy" />
+  <div class="info">
+    <p class="info-item">
+      <b>Likes </b>${image.likes}
+    </p>
+    <p class="info-item">
+      <b>Views </b>${image.views}
+    </p>
+    <p class="info-item">
+      <b>Comments </b>${image.comments}
+    </p>
+    <p class="info-item">
+      <b>Downloads </b>${image.downloads}
+    </p>
+  </div>
+</div>`;
+    })
+    .join('');
+
+  gallery.insertAdjacentHTML('beforeend', cardMarkup);
 }
